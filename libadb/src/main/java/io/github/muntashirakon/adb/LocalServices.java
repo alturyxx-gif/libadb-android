@@ -178,11 +178,13 @@ public class LocalServices {
         StringBuilder destination = new StringBuilder(serviceName);
         switch (service) {
             case SHELL:
-                for (String arg : args) {
+                for (int i = 0; i < args.length; ++i) {
+                    String arg = args[i];
                     if (arg.contains("\"")) {
                         throw new IllegalArgumentException("Arguments for inline shell cannot contain double" +
                                 " quotations.");
                     }
+                    if (i > 0) destination.append(' ');
                     if (arg.contains(" ")) {
                         destination.append("\"").append(Objects.requireNonNull(arg)).append("\"");
                     } else destination.append(Objects.requireNonNull(arg));

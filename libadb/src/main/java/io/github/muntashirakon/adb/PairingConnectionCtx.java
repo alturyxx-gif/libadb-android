@@ -88,6 +88,7 @@ public final class PairingConnectionCtx implements Closeable {
             throw new IOException("Connection is not ready yet.");
         }
 
+        Log.d(TAG, "pairing start host=" + mHost + " port=" + mPort + " codeLen=" + mPswd.length);
         mState = State.ExchangingMsgs;
 
         // Start worker
@@ -124,9 +125,11 @@ public final class PairingConnectionCtx implements Closeable {
         Socket socket;
         if (mRole == Role.Server) {
             SSLServerSocket sslServerSocket = (SSLServerSocket) mSslContext.getServerSocketFactory().createServerSocket(mPort);
+            Log.d(TAG, "waiting for TLS client on port=" + mPort);
             socket = sslServerSocket.accept();
             // TODO: Write automated test scripts after removing Conscrypt dependency.
         } else { // role == Role.Client
+            Log.d(TAG, "connecting TLS socket to " + mHost + ":" + mPort);
             socket = new Socket(mHost, mPort);
         }
         socket.setTcpNoDelay(true);
@@ -142,6 +145,7 @@ public final class PairingConnectionCtx implements Closeable {
         // To ensure the connection is not stolen while we do the PAKE, append the exported key material from the
         // tls connection to the password.
         byte[] keyMaterial = exportKeyingMaterial(sslSocket, EXPORT_KEY_SIZE);
+        Log.d(TAG, "exported key material length=" + keyMaterial.length);
         byte[] passwordBytes = new byte[mPswd.length + keyMaterial.length];
         System.arraycopy(mPswd, 0, passwordBytes, 0, mPswd.length);
         System.arraycopy(keyMaterial, 0, passwordBytes, mPswd.length, keyMaterial.length);
@@ -168,12 +172,14 @@ public final class PairingConnectionCtx implements Closeable {
             } else {
                 conscryptClass = Class.forName("com.android.org.conscrypt.Conscrypt");
             }
+            Log.d(TAG, "exportKeyingMaterial via " + conscryptClass.getName());
             Method exportKeyingMaterial = conscryptClass.getMethod("exportKeyingMaterial", SSLSocket.class,
                     String.class, byte[].class, int.class);
             return (byte[]) exportKeyingMaterial.invoke(null, sslSocket, EXPORTED_KEY_LABEL, null, length);
         } catch (SSLException e) {
             throw e;
         } catch (Throwable th) {
+            Log.e(TAG, "exportKeyingMaterial failed", th);
             throw new SSLException(th);
         }
     }
@@ -269,23 +275,29 @@ public final class PairingConnectionCtx implements Closeable {
         }
 
         PeerInfo theirPeerInfo = PeerInfo.readFrom(ByteBuffer.wrap(decryptedMsg));
-        Log.d(TAG, theirPeerInfo.toString());
+        Log.d(TAG, "Peer info received type=" + theirPeerInfo.type);
         return true;
     }
 
     @Override
     public void close() {
         Arrays.fill(mPswd, (byte) 0);
-        try {
-            mInputStream.close();
-        } catch (IOException ignore) {
+        if (mInputStream != null) {
+            try {
+                mInputStream.close();
+            } catch (IOException ignore) {
+            }
         }
-        try {
-            mOutputStream.close();
-        } catch (IOException ignore) {
+        if (mOutputStream != null) {
+            try {
+                mOutputStream.close();
+            } catch (IOException ignore) {
+            }
         }
         if (mState != State.Ready) {
-            mPairingAuthCtx.destroy();
+            if (mPairingAuthCtx != null) {
+                mPairingAuthCtx.destroy();
+            }
         }
     }
 

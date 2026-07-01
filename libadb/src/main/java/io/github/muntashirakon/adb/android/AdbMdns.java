@@ -6,21 +6,16 @@ import android.content.Context;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.os.Build;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.StringDef;
 
-import java.io.IOException;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.NetworkInterface;
-import java.net.ServerSocket;
-import java.net.SocketException;
-import java.util.Collections;
 import java.util.Objects;
 
 /**
@@ -31,6 +26,7 @@ import java.util.Objects;
 // Based on https://android.googlesource.com/platform/packages/modules/adb/+/eddd2d3a386a83f5d1e14f87a318adef4c2f1a9d/adb_mdns.cpp
 @RequiresApi(Build.VERSION_CODES.JELLY_BEAN)
 public class AdbMdns {
+    private static final String TAG = "AdbMdns";
     public static final String SERVICE_TYPE_ADB = "adb";
     public static final String SERVICE_TYPE_TLS_PAIRING = "adb-tls-pairing";
     public static final String SERVICE_TYPE_TLS_CONNECT = "adb-tls-connect";
@@ -93,6 +89,7 @@ public class AdbMdns {
 
     private void onDiscoveryStart() {
         mRegistered = true;
+        Log.d(TAG, "discovery started type=" + mServiceType);
     }
 
     private void onDiscoverStop() {
@@ -100,40 +97,23 @@ public class AdbMdns {
     }
 
     private void onServiceFound(NsdServiceInfo serviceInfo) {
+        Log.d(TAG, "service found type=" + mServiceType + " name=" + serviceInfo.getServiceName());
         mNsdManager.resolveService(serviceInfo, new ResolveListener(this));
     }
 
     private void onServiceLost(NsdServiceInfo serviceInfo) {
         if (mServiceName != null && mServiceName.equals(serviceInfo.getServiceName())) {
+            Log.d(TAG, "service lost type=" + mServiceType + " name=" + serviceInfo.getServiceName());
             mAdbDaemonDiscoveredListener.onPortChanged(serviceInfo.getHost(), -1);
         }
     }
 
     private void onServiceResolved(NsdServiceInfo serviceInfo) {
         if (!mRunning) return;
-        try {
-            for (NetworkInterface networkInterface : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                for (InetAddress inetAddress : Collections.list(networkInterface.getInetAddresses())) {
-                    String inetHost = inetAddress.getHostAddress();
-                    if (Objects.equals(inetHost, serviceInfo.getHost().getHostAddress())
-                            && isPortAvailable(serviceInfo.getPort())) {
-                        mServiceName = serviceInfo.getServiceName();
-                        mAdbDaemonDiscoveredListener.onPortChanged(serviceInfo.getHost(), serviceInfo.getPort());
-                    }
-                }
-            }
-        } catch (SocketException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private boolean isPortAvailable(int port) {
-        try (ServerSocket socket = new ServerSocket()) {
-            socket.bind(new InetSocketAddress(AndroidUtils.getHostIpAddress(mContext), port), 1);
-            return false;
-        } catch (IOException e) {
-            return true;
-        }
+        mServiceName = serviceInfo.getServiceName();
+        Log.d(TAG, "service resolved type=" + mServiceType + " host="
+                + serviceInfo.getHost().getHostAddress() + " port=" + serviceInfo.getPort());
+        mAdbDaemonDiscoveredListener.onPortChanged(serviceInfo.getHost(), serviceInfo.getPort());
     }
 
     private static class DiscoveryListener implements NsdManager.DiscoveryListener {
@@ -151,6 +131,7 @@ public class AdbMdns {
 
         @Override
         public void onStartDiscoveryFailed(String serviceType, int errorCode) {
+            Log.e(TAG, "discovery start failed type=" + serviceType + " error=" + errorCode);
         }
 
         @Override
@@ -160,6 +141,7 @@ public class AdbMdns {
 
         @Override
         public void onStopDiscoveryFailed(String serviceType, int errorCode) {
+            Log.e(TAG, "discovery stop failed type=" + serviceType + " error=" + errorCode);
         }
 
         @Override
@@ -183,6 +165,7 @@ public class AdbMdns {
 
         @Override
         public void onResolveFailed(NsdServiceInfo serviceInfo, int errorCode) {
+            Log.e(TAG, "resolve failed name=" + serviceInfo.getServiceName() + " error=" + errorCode);
         }
 
         @Override

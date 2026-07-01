@@ -4,6 +4,7 @@ package io.github.muntashirakon.adb;
 
 import android.annotation.SuppressLint;
 import android.os.Build;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 
@@ -22,6 +23,7 @@ import javax.net.ssl.X509ExtendedKeyManager;
 import javax.net.ssl.X509TrustManager;
 
 final class SslUtils {
+    private static final String TAG = "LibAdbSsl";
     private static boolean customConscrypt = false;
     private static SSLContext sslContext;
 
@@ -40,6 +42,7 @@ final class SslUtils {
             Provider openSslProvder = (Provider) providerClass.getDeclaredConstructor().newInstance();
             sslContext = SSLContext.getInstance("TLSv1.3", openSslProvder);
             customConscrypt = true;
+            Log.d(TAG, "Using custom Conscrypt provider");
         } catch (NoSuchAlgorithmException e) {
             throw e;
         } catch (Throwable e) {
@@ -49,8 +52,9 @@ final class SslUtils {
             }
             sslContext = SSLContext.getInstance("TLSv1.3");
             customConscrypt = false;
+            Log.d(TAG, "Using platform TLSv1.3 provider");
         }
-        System.out.println("Using " + (customConscrypt ? "custom" : "default") + " TLSv1.3 provider...");
+        Log.d(TAG, "Initialized TLS context with " + (customConscrypt ? "custom" : "default") + " provider");
         sslContext.init(new KeyManager[]{getKeyManager(keyPair)},
                 new X509TrustManager[]{getAllAcceptingTrustManager()},
                 new SecureRandom());
