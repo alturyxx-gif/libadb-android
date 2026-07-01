@@ -204,27 +204,6 @@ public class AdbStream implements Closeable {
      * @throws IOException If the stream fails while sending data
      */
     public void write(byte[] bytes, int offset, int length) throws IOException {
-        synchronized (this) {
-            // Make sure we're ready for a WRTE
-            while (!mIsClosed && !mWriteReady.compareAndSet(true, false)) {
-                try {
-                    wait();
-                } catch (InterruptedException e) {
-                    //noinspection UnnecessaryInitCause
-                    throw (IOException) new IOException().initCause(e);
-                }
-            }
-
-            if (mIsClosed) {
-                throw new IOException("Stream closed");
-            }
-        }
-        // Split and send data as WRTE packet
-        // TODO: A WRITE message may not be sent until a READY message is received.
-        //  Once a WRITE message is sent, an additional WRITE message may not be
-        //  sent until another READY message has been received.  Recipients of
-        //  a WRITE message that is in violation of this requirement will CLOSE
-        //  the connection.
         int maxData;
         try {
             maxData = mAdbConnection.getMaxData();
@@ -233,15 +212,23 @@ public class AdbStream implements Closeable {
             throw (IOException) new IOException().initCause(e);
         }
         while (length != 0) {
-            if (length <= maxData) {
-                mAdbConnection.sendPacket(AdbProtocol.generateWrite(mLocalId, mRemoteId, bytes, offset, length));
-                offset = offset + length;
-                length = 0;
-            } else { // if (length > maxData) {
-                mAdbConnection.sendPacket(AdbProtocol.generateWrite(mLocalId, mRemoteId, bytes, offset, maxData));
-                offset = offset + maxData;
-                length = length - maxData;
+            synchronized (this) {
+                while (!mIsClosed && !mWriteReady.compareAndSet(true, false)) {
+                    try {
+                        wait();
+                    } catch (InterruptedException e) {
+                        //noinspection UnnecessaryInitCause
+                        throw (IOException) new IOException().initCause(e);
+                    }
+                }
+                if (mIsClosed) {
+                    throw new IOException("Stream closed");
+                }
             }
+            int packetLength = Math.min(length, maxData);
+            mAdbConnection.sendPacket(AdbProtocol.generateWrite(mLocalId, mRemoteId, bytes, offset, packetLength));
+            offset += packetLength;
+            length -= packetLength;
         }
     }
 
